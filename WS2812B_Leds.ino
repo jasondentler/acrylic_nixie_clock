@@ -24,6 +24,121 @@ RTClib RTC;
 DS3231 Clock;
 byte lastSecond = 255;
 
+void display(char* text, CRGB* colors) {
+  Serial.print("Current time: ");
+  Serial.print(text);
+  Serial.println();
+
+  #define digits 6
+  #define sheetsPerDigit 10
+  #define ledsPerDigitSheet 2
+  
+  #define separators 2
+  #define sheetsPerSeparator 2
+  #define ledsPerSeparatorSheet 1
+
+  int totalLEDs = digits * sheetsPerDigit * ledsPerDigitSheet +
+    separators * sheetsPerSeparator * ledsPerSeparatorSheet;
+
+  for (int ledIndex = 0; ledIndex < NUM_LEDS; ledIndex++)
+    leds[ledIndex] = CRGB::Black;
+
+  int firstLED = 0;
+  for (int characterIndex = 0; characterIndex < digits + separators; characterIndex++) {
+    char character = text[characterIndex];
+    int ledsPerCharacter;
+    int ledsPerSheet;
+    switch (characterIndex) {
+      case 0:
+      case 1:
+      case 3:
+      case 4:
+      case 6:
+      case 7:
+        ledsPerSheet = ledsPerDigitSheet;
+        ledsPerCharacter = ledsPerDigitSheet * sheetsPerDigit;
+        break;
+      case 2:
+      case 5:
+        ledsPerSheet = ledsPerSeparatorSheet;
+        ledsPerCharacter = ledsPerSeparatorSheet * sheetsPerSeparator;
+        break;
+    }
+
+    int sheet = 0;
+    switch (character) {
+      case ' ':
+        // Skip ahead to the next character
+        continue;
+      case '0':
+        sheet = 0;
+        break;
+      case '1':
+        sheet = 1;
+        break;
+      case '2':
+        sheet = 2;
+        break;
+      case '3':
+        sheet = 3;
+        break;
+      case '4':
+        sheet = 4;
+        break;
+      case '5':
+        sheet = 5;
+        break;
+      case '6':
+        sheet = 6;
+        break;
+      case '7':
+        sheet = 7;
+        break;
+      case '8':
+        sheet = 8;
+        break;
+      case '9':
+        sheet = 9;
+        break;
+      case '.':
+        sheet = 0;
+        break;
+      case '°':
+        sheet = 1;
+        break;
+      case ':':
+        sheet = 0;
+        // Then we also need to turn on sheet 1
+        break;
+      default:
+        Serial.print("Unable to display character ");
+        Serial.print(character);
+        Serial.print(' at position ');
+        Serial.print(characterIndex);
+        Serial.println();
+        Serial.flush();
+        return;
+    }
+
+    for (int i = 0; i < ledsPerSheet; i++) {
+      int ledIndex = firstLED + ledsPerSheet * sheet + i;
+      leds[ledIndex] = colors[characterIndex];
+    }
+
+    if (character == ':') {
+      // Also do sheet 1 for ':'
+      for (int i = 0; i < ledsPerSheet; i++) {
+        int ledIndex = firstLED + ledsPerSheet * sheet + i;
+        leds[firstLED + ledsPerSheet * 1 + i] = colors[characterIndex];
+      }
+    }
+
+    firstLED += ledsPerCharacter;
+  }
+
+  FastLED.show();
+}
+
 void setup() {
   Wire.begin(); // Start i2c
   Serial.begin(9600); // Start serial
@@ -36,109 +151,33 @@ void setup() {
 void initLEDs() {
   FastLED.addLeds<LED_TYPE,LED_DATA_PIN,COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip); // initializes LED strip
   FastLED.setBrightness(BRIGHTNESS);// global brightness
-  turnLEDsOff();
 }
 
-void outputGPSInfo() {
-    while (ss.available() > 0)
-    if (!gps.encode(ss.read()))
-      return;
-  Serial.print(F("Location: ")); 
-  if (gps.location.isValid())
-  {
-    Serial.print(gps.location.lat(), 6);
-    Serial.print(F(","));
-    Serial.print(gps.location.lng(), 6);
-  }
-  else
-  {
-    Serial.print(F("INVALID"));
-  }
+int showTimeHue = 0;
+void showTime() {
+  showTimeHue += 8;
+  showTimeHue = showTimeHue % 256;
 
-  Serial.print(F("  Date/Time: "));
-  if (gps.date.isValid())
-  {
-    Serial.print(gps.date.month());
-    Serial.print(F("/"));
-    Serial.print(gps.date.day());
-    Serial.print(F("/"));
-    Serial.print(gps.date.year());
-  }
-  else
-  {
-    Serial.print(F("INVALID"));
-  }
-
-  Serial.print(F(" "));
-  if (gps.time.isValid())
-  {
-    if (gps.time.hour() < 10) Serial.print(F("0"));
-    Serial.print(gps.time.hour());
-    Serial.print(F(":"));
-    if (gps.time.minute() < 10) Serial.print(F("0"));
-    Serial.print(gps.time.minute());
-    Serial.print(F(":"));
-    if (gps.time.second() < 10) Serial.print(F("0"));
-    Serial.print(gps.time.second());
-    Serial.print(F("."));
-    if (gps.time.centisecond() < 10) Serial.print(F("0"));
-    Serial.print(gps.time.centisecond());
-  }
-  else
-  {
-    Serial.print(F("INVALID"));
-  }
-
-  Serial.println();
-
-}
-
-void outputRealTimeClockInfo() {
   DateTime now = RTC.now();
-  int currentSecond = now.second();
-  if (currentSecond == lastSecond) {
-    return;
+  char text[8];
+  CRGB colors[8];
+
+  for (int hue = 0; hue < 8; hue++) {
+    colors[hue] = CHSV(showTimeHue + hue * 5, 255, 255);
   }
-  lastSecond = currentSecond;
 
-  Serial.print(now.year(), DEC);
-  Serial.print('/');
-  Serial.print(now.month(), DEC);
-  Serial.print('/');
-  Serial.print(now.day(), DEC);
-  Serial.print(' ');
-  Serial.print(now.hour(), DEC);
-  Serial.print(':');
-  Serial.print(now.minute(), DEC);
-  Serial.print(':');
-  Serial.print(now.second(), DEC);
-  Serial.println();
-
-  Serial.print("Temp = ");
-  Serial.println(Clock.getTemperature(), 2);
-}
-
-// switches off all LEDs
-void turnLEDsOff() {
-  for (int i = 0; i < NUM_LEDS; ++i) {
-    leds[i] = CRGB::Black;
-  }
-  FastLED.show();
-}
-
-int hue = 0;
-void shiftPixels(long delayTime) {
-  for (int i = NUM_LEDS; i > 0; i--) {
-    leds[i] = leds[i - 1];
-  }
-  hue += 1;
-  CRGB newPixel = CHSV(hue, 255, 255);
-  leds[0] = newPixel;
-  FastLED.show();
+  byte hour = now.hour() % 12;
+  if (hour == 0) hour = 12;
+  snprintf(text, 8, "%02d", hour);
+  text[2] = ':';
+  snprintf(text + 3, 8, "%02d", now.minute());
+  text[5] = ':';
+  snprintf(text + 6, 8, "%02d", now.second());
+  display(text, colors);
 }
 
 // main program
 void loop() {
-  outputRealTimeClockInfo();
-  shiftPixels(10);
+  showTime();
+  delay(1000);
 }
